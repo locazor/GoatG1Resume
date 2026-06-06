@@ -303,11 +303,12 @@ async def async_send_resume(hass: HomeAssistant, did: str) -> None:
     command = command_class(action)
     # Resolve the version off-loop (cached after first call) for the debug line.
     dc_version = await async_get_deebot_client_version(hass)
+    command_name = getattr(command, "name", getattr(command, "NAME", "?"))
     _LOGGER.info("Sending resume/continue (act: resume) to Ecovacs device '%s'", name)
     _LOGGER.debug(
         "Resume command: %s name=%s args=%s (deebot-client %s)",
         type(command).__name__,
-        getattr(command, "name", "?"),
+        command_name,
         getattr(command, "_args", "?"),
         dc_version,
     )

@@ -128,7 +128,7 @@ async def test_resume_dispatches_cleanv2_resume_for_goat() -> None:
     device.execute_command.assert_awaited_once()
     sent = device.execute_command.await_args.args[0]
     assert isinstance(sent, CleanV2)
-    assert sent.name == "clean_V2"
+    assert getattr(sent, "name", getattr(sent, "NAME", None)) == "clean_V2"
     # The serialized payload is the native resume action: act: resume.
     assert sent._args == {"act": CleanAction.RESUME.value, "content": {}}
     assert sent._args["act"] == "resume"
