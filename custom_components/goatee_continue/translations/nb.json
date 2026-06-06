@@ -1,0 +1,41 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Goatee Continue",
+        "description": "Velg Ecovacs GOAT-gressklipperen du vil legge til en fortsett/gjenoppta-funksjon for. Dette gjenbruker den offisielle Ecovacs-integrasjonens økt – ingen ny innlogging.",
+        "data": {
+          "did": "Ecovacs-enhet"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Denne enheten er allerede konfigurert.",
+      "ecovacs_not_loaded": "Den offisielle Ecovacs-integrasjonen er ikke satt opp. Legg den til først, og legg deretter til Goatee Continue.",
+      "no_devices": "Fant ingen kompatible Ecovacs-enheter. Kontroller at den offisielle Ecovacs-integrasjonen er lastet og at GOAT-en er tilkoblet."
+    }
+  },
+  "entity": {
+    "button": {
+      "continue": {
+        "name": "Fortsett"
+      }
+    }
+  },
+  "services": {
+    "resume": {
+      "name": "Gjenoppta (fortsett) klipping",
+      "description": "Fortsett den pausede, uferdige klippeoppgaven der den slapp (sender act: r, som «Fortsett»-knappen i appen). Starter ikke kartet på nytt.",
+      "fields": {
+        "device_id": {
+          "name": "Enhet",
+          "description": "Ecovacs-enhet(er) som skal gjenopptas. Standard er alle konfigurerte GOAT-er."
+        },
+        "entity_id": {
+          "name": "Entitet",
+          "description": "Gressklipper-entitet(er) hvis enhet skal gjenopptas."
+        }
+      }
+    }
+  }
+}
