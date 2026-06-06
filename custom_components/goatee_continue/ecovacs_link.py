@@ -16,18 +16,21 @@ preserved.
 Validated against:
     * Home Assistant core ~2026 (``ecovacs`` integration using
       ``ConfigEntry.runtime_data`` -> ``EcovacsController.devices``).
-    * ``deebot-client`` 6.0.2
-        - ``CleanAction.RESUME`` exists (``models.CleanAction``, value ``"resume"``).
+    * ``deebot-client`` 6.0.2 and 18.3.0 (HA 2026 / Python 3.14). In both:
+        - ``CleanAction.RESUME`` exists (``models.CleanAction``, value ``"resume"``;
+          18.3.0 adds an XML alias ``"r"`` but ``.value`` is still ``"resume"``).
         - GOAT G1 (model ``5xu9h3``) declares
           ``capabilities.clean.action.command = CleanV2``.
         - ``Device.execute_command(command)`` dispatches.
         - ``Device.device_info`` is an ``ApiDeviceInfo`` mapping with a ``did``.
         - ``Device.events.get_last_event(StateEvent)`` exposes the live state.
+      Note: neither version exposes an in-memory ``__version__`` attribute, so
+      the version is read via ``importlib.metadata`` off the event loop.
 """
 
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import version
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -49,12 +52,50 @@ _PAUSED_STATE_NAMES = {"PAUSED"}
 _RESUMABLE_STATE_NAMES = {"PAUSED"}
 
 
-def deebot_client_version() -> str:
-    """Return the installed ``deebot-client`` version (or ``"unknown"``)."""
+# Cached ``deebot-client`` version string. Resolved exactly once, off the event
+# loop (see ``async_get_deebot_client_version``). ``None`` means "not resolved
+# yet"; once resolved it is a real version or the literal "unknown".
+_deebot_client_version: str | None = None
+
+
+def _read_deebot_client_version() -> str:
+    """Blocking metadata read — MUST run in an executor, never on the loop.
+
+    ``importlib.metadata.version`` performs filesystem I/O (``listdir``/``open``/
+    ``read_text`` on the package ``dist-info/METADATA``), which Home Assistant
+    forbids on the event loop. Any failure is non-fatal: the version is only
+    used for logging/diagnostics, so we fall back to ``"unknown"``.
+    """
     try:
         return version("deebot-client")
-    except PackageNotFoundError:  # pragma: no cover - defensive
+    except Exception:  # noqa: BLE001 - diagnostics only, never fatal
         return "unknown"
+
+
+async def async_get_deebot_client_version(hass: HomeAssistant) -> str:
+    """Return the installed ``deebot-client`` version without blocking the loop.
+
+    The blocking metadata lookup is run once via the executor and cached for the
+    lifetime of the process; subsequent calls are pure cache reads. Safe to call
+    from setup, reload, or any service/button handler.
+    """
+    global _deebot_client_version
+    if _deebot_client_version is None:
+        _deebot_client_version = await hass.async_add_executor_job(
+            _read_deebot_client_version
+        )
+    return _deebot_client_version
+
+
+def deebot_client_version() -> str:
+    """Return the cached ``deebot-client`` version (or ``"unknown"``).
+
+    Pure, non-blocking cache read — safe to call on the event loop. The cache is
+    populated off-loop by ``async_get_deebot_client_version`` (called during
+    ``async_setup_entry``). If it has not been resolved yet, returns "unknown"
+    rather than performing blocking I/O.
+    """
+    return _deebot_client_version if _deebot_client_version is not None else "unknown"
 
 
 def _iter_ecovacs_devices(hass: HomeAssistant) -> list[Any]:
@@ -260,13 +301,15 @@ async def async_send_resume(hass: HomeAssistant, did: str) -> None:
         return
 
     command = command_class(action)
+    # Resolve the version off-loop (cached after first call) for the debug line.
+    dc_version = await async_get_deebot_client_version(hass)
     _LOGGER.info("Sending resume/continue (act: resume) to Ecovacs device '%s'", name)
     _LOGGER.debug(
         "Resume command: %s name=%s args=%s (deebot-client %s)",
         type(command).__name__,
         getattr(command, "name", "?"),
         getattr(command, "_args", "?"),
-        deebot_client_version(),
+        dc_version,
     )
 
     try:

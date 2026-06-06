@@ -123,10 +123,20 @@ The single form field `did` is a `SelectSelector` (dropdown) whose options are
 The integration’s only fragile module. Public helpers:
 
 ```python
+async def async_get_deebot_client_version(hass: HomeAssistant) -> str
+```
+Returns the installed `deebot-client` version (or `"unknown"`). The blocking
+`importlib.metadata` lookup is run **off the event loop** via
+`hass.async_add_executor_job(...)` and cached for the process lifetime, so it is
+read at most once and never blocks the loop. Diagnostic-only — any failure
+yields `"unknown"` and never blocks setup.
+
+```python
 def deebot_client_version() -> str
 ```
-Returns the installed `deebot-client` version, or `"unknown"` if the package
-metadata isn’t found.
+Pure, non-blocking read of the cached version (or `"unknown"` if not yet
+resolved). Safe to call on the event loop; the cache is warmed by
+`async_get_deebot_client_version` during `async_setup_entry`.
 
 ```python
 def async_list_goat_devices(hass: HomeAssistant) -> dict[str, str]

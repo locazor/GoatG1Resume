@@ -28,7 +28,7 @@ from .const import (
     PLATFORMS,
     SERVICE_RESUME,
 )
-from .ecovacs_link import async_send_resume, deebot_client_version
+from .ecovacs_link import async_get_deebot_client_version, async_send_resume
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,10 +52,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "reuses its authenticated session and cannot work without it."
         )
 
+    # Resolve the deebot-client version off the event loop (cached thereafter).
+    # ``importlib.metadata.version`` does blocking filesystem I/O, which HA
+    # forbids on the loop; the version is diagnostic only so failures are
+    # non-fatal and fall back to "unknown".
     _LOGGER.debug(
         "Setting up Goatee Continue for did=%s (deebot-client %s)",
         entry.data.get(CONF_DID),
-        deebot_client_version(),
+        await async_get_deebot_client_version(hass),
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

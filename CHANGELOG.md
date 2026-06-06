@@ -13,8 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   API reference, troubleshooting, and development.
 - Module/function docstrings completed across the integration; brief comments at
   the fragile `ecovacs_link.py` access points.
+- Validated against `deebot-client` **18.3.0** (HAOS / Python 3.14) in addition
+  to 6.0.2: `CleanAction.RESUME.value` is still `"resume"`, GOAT G1 `5xu9h3`
+  still maps its clean action to `CleanV2`, and
+  `device.capabilities.clean.action.command` is still the correct runtime path.
+  Version matrix and re-verification notes added to `docs/development.md`.
 
 ### Fixed
+- **Blocking I/O in the event loop.** The `deebot-client` version was read with
+  `importlib.metadata.version()` synchronously during `async_setup_entry`, which
+  performs blocking filesystem I/O (`listdir`/`open`/`read_text` on the package
+  `dist-info/METADATA`) and was flagged by `homeassistant.util.loop`. The lookup
+  now runs once via `hass.async_add_executor_job(...)` and is cached
+  (`ecovacs_link.async_get_deebot_client_version`); the synchronous
+  `deebot_client_version()` accessor is now a pure, non-blocking cache read.
+  Failures are non-fatal (`"unknown"`) and never block setup. No resume/guard
+  logic changed.
 - Documentation accuracy: the resume payload is `act: resume` (the full
   `CleanAction.RESUME` value in `deebot-client` 6.0.2), not the single letter
   `act: r`. Corrected the docstrings, `services.yaml`, `strings.json`, the `en`/`nb`

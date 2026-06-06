@@ -2,7 +2,7 @@
 
 [![HACS: custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
 ![Home Assistant 2024.12+](https://img.shields.io/badge/Home%20Assistant-2024.12%2B-41BDF5.svg)
-![deebot-client 6.0.2](https://img.shields.io/badge/deebot--client-6.0.2-blue.svg)
+![deebot-client 6.0.2 / 18.3.0](https://img.shields.io/badge/deebot--client-6.0.2%20%7C%2018.3.0-blue.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
 A tiny, HACS-installable Home Assistant custom integration (domain
@@ -49,7 +49,8 @@ session (no second login).
 - ✅ **Idempotent-safe** — skips with a warning if the mower is not paused.
 - ✅ **Config flow** — pick your GOAT from a dropdown; **no credentials**.
 - ✅ **Localised** — English + Norwegian Bokmål.
-- ✅ **Tested** — unit tests against `deebot-client` 6.0.2; `ruff`-clean.
+- ✅ **Tested** — unit tests against `deebot-client` 6.0.2; live-validated on
+  `deebot-client` 18.3.0 (HAOS / Python 3.14); `ruff`-clean.
 
 ---
 
@@ -103,9 +104,9 @@ GOAT device. Full reference and automation examples: [docs/usage.md](docs/usage.
 
 | Component | Validated against |
 | --- | --- |
-| Home Assistant core | ~2026 stable (`ecovacs` using `ConfigEntry.runtime_data` → `EcovacsController.devices`); manifest minimum `homeassistant 2024.12.0` |
+| Home Assistant core | ~2026 stable, incl. **Python 3.14** (`ecovacs` using `ConfigEntry.runtime_data` → `EcovacsController.devices`); manifest minimum `homeassistant 2024.12.0` |
 | Official `ecovacs` integration | runtime data is an `EcovacsController` exposing `.devices` |
-| `deebot-client` | **6.0.2** (`CleanAction.RESUME` = `"resume"`; GOAT G1 model `5xu9h3` → `CleanV2`) |
+| `deebot-client` | **6.0.2** and **18.3.0** (`CleanAction.RESUME.value` = `"resume"`; GOAT G1 model `5xu9h3` → `CleanV2`). 18.3.0 was live-validated on HAOS/Python 3.14. See [docs/development.md](docs/development.md#re-verification-on-deebot-client-1830). |
 
 > **Fragility caveat:** reaching into another integration’s `runtime_data` is **not**
 > a stable public API and may break on Home Assistant core, `ecovacs`, or

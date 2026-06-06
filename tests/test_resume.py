@@ -100,7 +100,21 @@ def _hass_with_devices(*devices: MagicMock) -> MagicMock:
     entry.runtime_data = controller
     hass.config_entries.async_entries.return_value = [entry]
     hass.data = {}
+
+    # async_add_executor_job(func, *args) -> awaitable running func off-loop.
+    async def _run_executor(func, *args):
+        return func(*args)
+
+    hass.async_add_executor_job = AsyncMock(side_effect=_run_executor)
     return hass
+
+
+@pytest.fixture(autouse=True)
+def _reset_version_cache():
+    """The deebot-client version is cached module-globally; reset per test."""
+    ecovacs_link._deebot_client_version = None
+    yield
+    ecovacs_link._deebot_client_version = None
 
 
 @pytest.mark.asyncio
@@ -177,3 +191,47 @@ def test_list_goat_devices_only_returns_resumable() -> None:
 
     devices = ecovacs_link.async_list_goat_devices(hass)
     assert devices == {"goat": "Goatee"}
+
+
+@pytest.mark.asyncio
+async def test_version_lookup_runs_off_loop_via_executor() -> None:
+    """The blocking metadata read must go through async_add_executor_job, not
+    execute on the event loop, and the result is cached after the first call."""
+    hass = _hass_with_devices()
+
+    version = await ecovacs_link.async_get_deebot_client_version(hass)
+
+    # The (blocking) reader was dispatched to the executor exactly once...
+    hass.async_add_executor_job.assert_awaited_once()
+    assert (
+        hass.async_add_executor_job.await_args.args[0]
+        is ecovacs_link._read_deebot_client_version
+    )
+    assert isinstance(version, str) and version  # a real version or "unknown"
+
+    # ...and a second call is served purely from cache (no further executor use).
+    again = await ecovacs_link.async_get_deebot_client_version(hass)
+    assert again == version
+    hass.async_add_executor_job.assert_awaited_once()
+
+
+def test_sync_version_is_nonblocking_cache_read() -> None:
+    """The sync accessor never performs I/O: it returns 'unknown' until the
+    async resolver has populated the cache, then the cached value."""
+    assert ecovacs_link._deebot_client_version is None
+    assert ecovacs_link.deebot_client_version() == "unknown"
+
+    ecovacs_link._deebot_client_version = "18.3.0"
+    assert ecovacs_link.deebot_client_version() == "18.3.0"
+
+
+def test_reader_never_raises() -> None:
+    """The executor-side reader is non-fatal: any failure yields 'unknown'."""
+    import goatee_continue.ecovacs_link as link
+
+    original = link.version
+    try:
+        link.version = lambda _name: (_ for _ in ()).throw(RuntimeError("boom"))
+        assert link._read_deebot_client_version() == "unknown"
+    finally:
+        link.version = original

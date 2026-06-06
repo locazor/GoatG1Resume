@@ -31,7 +31,8 @@ that module’s small public surface:
 | --- | --- |
 | `async_send_resume(hass, did)` | the `resume` service and the button |
 | `async_list_goat_devices(hass)` | the config flow (device picker) |
-| `deebot_client_version()` | logging / diagnostics |
+| `async_get_deebot_client_version(hass)` | logging / diagnostics (off-loop, cached) |
+| `deebot_client_version()` | logging / diagnostics (non-blocking cache read) |
 
 ---
 
