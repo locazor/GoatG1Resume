@@ -10,7 +10,7 @@ Architecture (Option A): we do **not** create a second Ecovacs cloud login.
 We locate the already-authenticated ``deebot_client.device.Device`` object
 that the official ``ecovacs`` integration created and stored on its config
 entry's ``runtime_data`` (an ``EcovacsController``), and we dispatch the
-native *resume* command (``act: r``) on it. One session per account is
+native *resume* command (``act: resume``) on it. One session per account is
 preserved.
 
 Validated against:
@@ -162,6 +162,9 @@ def _resume_command_class(device: Any) -> type | None:
     ``CleanV2``; older devices use ``Clean``).
     """
     try:
+        # FRAGILE: deep attribute chain into deebot-client's capability model
+        # (device.capabilities.clean.action.command). Guarded by AttributeError;
+        # if the library reshapes this, this is the line to fix.
         return device.capabilities.clean.action.command
     except AttributeError:
         return None
@@ -181,7 +184,7 @@ def _resume_action() -> Any:
     if action is None:  # pragma: no cover - API drift
         raise HomeAssistantError(
             "This version of deebot-client has no CleanAction.RESUME. The "
-            "resume/continue command (act: r) could not be built. Please open "
+            "resume/continue command (act: resume) could not be built. Please open "
             "an issue with your deebot-client version "
             f"({deebot_client_version()})."
         )
@@ -218,8 +221,9 @@ async def async_send_resume(hass: HomeAssistant, did: str) -> None:
     """Resolve the deebot Device for ``did`` and dispatch the resume command.
 
     Mirrors the Ecovacs app's "Continue" button: sends the native
-    ``Clean``/``CleanV2`` command with ``CleanAction.RESUME`` (``act: r``),
-    which continues the *paused, unfinished* task instead of starting a new one.
+    ``Clean``/``CleanV2`` command with ``CleanAction.RESUME`` (serialized as
+    ``act: resume``), which continues the *paused, unfinished* task instead of
+    starting a new one.
 
     Raises ``HomeAssistantError`` for user-facing failures (ecovacs not loaded,
     device not found, command unsupported, dispatch failure).
@@ -256,7 +260,7 @@ async def async_send_resume(hass: HomeAssistant, did: str) -> None:
         return
 
     command = command_class(action)
-    _LOGGER.info("Sending resume/continue (act: r) to Ecovacs device '%s'", name)
+    _LOGGER.info("Sending resume/continue (act: resume) to Ecovacs device '%s'", name)
     _LOGGER.debug(
         "Resume command: %s name=%s args=%s (deebot-client %s)",
         type(command).__name__,

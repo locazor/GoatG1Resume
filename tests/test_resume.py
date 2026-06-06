@@ -2,7 +2,7 @@
 
 These tests mock the ``deebot-client`` Device and assert that the correct
 resume command object (the device's own clean-action command class, built with
-``CleanAction.RESUME`` / ``act: r``) is dispatched via ``execute_command``.
+``CleanAction.RESUME`` / ``act: resume``) is dispatched via ``execute_command``.
 
 They require ``deebot-client`` to be importable (it is the dependency of the
 official Ecovacs integration) but do NOT require Home Assistant core.
@@ -105,7 +105,7 @@ def _hass_with_devices(*devices: MagicMock) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_resume_dispatches_cleanv2_resume_for_goat() -> None:
-    """A paused GOAT (CleanV2) gets a CleanV2 resume command (act: r)."""
+    """A paused GOAT (CleanV2) gets a CleanV2 resume command (act: resume)."""
     device = _make_device(did="abc123", command_class=CleanV2, state=State.PAUSED)
     hass = _hass_with_devices(device)
 
@@ -115,7 +115,7 @@ async def test_resume_dispatches_cleanv2_resume_for_goat() -> None:
     sent = device.execute_command.await_args.args[0]
     assert isinstance(sent, CleanV2)
     assert sent.name == "clean_V2"
-    # The serialized payload is the native resume action: act: r.
+    # The serialized payload is the native resume action: act: resume.
     assert sent._args == {"act": CleanAction.RESUME.value, "content": {}}
     assert sent._args["act"] == "resume"
 
