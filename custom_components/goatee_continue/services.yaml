@@ -2,9 +2,9 @@ resume:
   name: Resume (continue) mowing
   description: >-
     Continue the paused, unfinished mowing task from where it left off
-    (mirrors the Ecovacs app's "Continue" button by sending act: r). Unlike
-    lawn_mower.start_mowing, this does NOT restart the map from scratch. With
-    no target, every configured GOAT is resumed.
+    (mirrors the Ecovacs app's "Continue" button by sending act: resume).
+    Unlike lawn_mower.start_mowing, this does NOT restart the map from scratch.
+    With no target, every configured GOAT is resumed.
   fields:
     device_id:
       name: Device

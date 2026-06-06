@@ -25,7 +25,7 @@
   "services": {
     "resume": {
       "name": "Gjenoppta (fortsett) klipping",
-      "description": "Fortsett den pausede, uferdige klippeoppgaven der den slapp (sender act: r, som «Fortsett»-knappen i appen). Starter ikke kartet på nytt.",
+      "description": "Fortsett den pausede, uferdige klippeoppgaven der den slapp (sender act: resume, som «Fortsett»-knappen i appen). Starter ikke kartet på nytt.",
       "fields": {
         "device_id": {
           "name": "Enhet",

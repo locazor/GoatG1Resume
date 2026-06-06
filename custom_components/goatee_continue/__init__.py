@@ -4,7 +4,7 @@ Adds the "continue / resume mowing" capability that the built-in Home
 Assistant ``lawn_mower`` platform lacks for Ecovacs robots (see core issue
 home-assistant/core#145338). It reuses the authenticated ``deebot-client``
 session owned by the official ``ecovacs`` integration (no second login) and
-dispatches the native resume command (``act: r``).
+dispatches the native resume command (``act: resume``).
 """
 
 from __future__ import annotations

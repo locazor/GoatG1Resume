@@ -25,7 +25,7 @@
   "services": {
     "resume": {
       "name": "Resume (continue) mowing",
-      "description": "Continue the paused, unfinished mowing task from where it left off (sends act: r, like the app's Continue button). Does not restart the map.",
+      "description": "Continue the paused, unfinished mowing task from where it left off (sends act: resume, like the app's Continue button). Does not restart the map.",
       "fields": {
         "device_id": {
           "name": "Device",
