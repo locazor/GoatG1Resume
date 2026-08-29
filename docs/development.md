@@ -18,7 +18,7 @@ The unit tests deliberately do **not** require a full Home Assistant install —
 
 ```bash
 pip install -r requirements_test.txt
-# pytest, pytest-asyncio, deebot-client>=6.0.2, ruff
+# pytest, pytest-asyncio, deebot-client>=18.3.0, ruff, mypy
 ```
 
 `deebot-client` is required because the tests build real `Clean`/`CleanV2`
@@ -60,10 +60,10 @@ whose `ecovacs` entry exposes `runtime_data.devices`.
 
 | Component | Validated | Notes |
 | --- | --- | --- |
-| `deebot-client` | **6.0.2** and **18.3.0** | `CleanAction.RESUME.value == "resume"`; GOAT G1 `5xu9h3` → `CleanV2`; `Clean._execute` guards `RESUME`↔`START`. In 18.3.0 `CleanAction` is a `StrEnumWithXml` (`RESUME = "resume", "r"`) — `.value` is still `"resume"`, the `"r"` is only the XML alias. Hardware files moved from `hardware/deebot/<model>.py` to `hardware/<model>.py`. Neither version exposes `deebot_client.__version__`. |
+| `deebot-client` | **18.3.0** and **18.5.1** | `CleanAction.RESUME.value == "resume"`; `5xu9h3` (GOAT G1) and `e4gqia` (GOAT A1600 LiDAR Pro) → `CleanV2`; `Clean._execute` **rewrites `RESUME`→`START` when not paused** (see below). `CleanAction` is a `StrEnumWithXml` (`RESUME = "resume", "r"`) — `.value` is `"resume"`, the `"r"` is only the XML alias. Hardware files live at `hardware/<model>.py` (they were under `hardware/deebot/` in ≤6.x). Neither version exposes `deebot_client.__version__`. |
 | Official `ecovacs` integration | ~2026 | `ConfigEntry.runtime_data` is an `EcovacsController` exposing `.devices` (list or callable). |
-| Home Assistant core | ~2026 stable (incl. Python 3.14) | Minimum declared: `homeassistant 2024.12.0` (`hacs.json`). Live-validated on HAOS / Python 3.14 with `deebot-client` 18.3.0. |
-| This integration | `1.0.1` | `manifest.json` version. |
+| Home Assistant core | **2026.8.3** (HAOS 18.2, Python 3.14.6) | Minimum declared: `homeassistant 2024.12.0` (`hacs.json`). That HA build ships `deebot-client==18.5.1`. |
+| This integration | `2.0.0` | `manifest.json` version. |
 
 Everything outside `ecovacs_link.py` is ordinary HA integration code; the fragile,
 version-sensitive assumptions are confined to that module (see
@@ -108,7 +108,8 @@ function is where to fix it.
 
 ## How the resume API was verified
 
-Verified against the **actually installed** `deebot-client` **6.0.2**.
+Verified against the **actually installed** `deebot-client` **18.3.0**, and
+re-verified against **18.5.1** (what HA 2026.8.3 ships).
 
 **`CleanAction` (`deebot_client/models.py`)** — `RESUME` exists:
 
@@ -139,13 +140,14 @@ CleanV2(CleanAction.RESUME)._args == {"act": "resume", "content": {}}
 > **Note: differs from earlier notes.** Earlier drafts described the payload as
 > `act: r`; the verified value is the full word **`act: resume`**. The source
 > docstrings/comments were corrected accordingly. The single-letter `s/r/p/h`
-> table belongs to the legacy Ecovacs XML protocol, not `deebot-client` 6.0.2.
+> table is the `.xml_value` of each `CleanAction`, used only by legacy
+> XML-protocol devices — not by the JSON-protocol GOATs.
 
-### Re-verification on `deebot-client` 18.3.0
+### Re-verification on `deebot-client` 18.3.0 and 18.5.1
 
-The live HAOS system runs **18.3.0** on **Python 3.14** and works with no symbol
-errors. Re-verified against the 18.3.0 source that every relied-upon symbol is
-unchanged:
+The live HAOS system runs **18.5.1** on **Python 3.14.6**; 18.3.0 is what this
+repo's dev venv pins. Re-verified against both sources that every relied-upon
+symbol is unchanged:
 
 **`CleanAction` (`deebot_client/models.py`)** — now a `StrEnumWithXml`, but
 `.value` is still the full word (the second tuple element is only the XML alias):
@@ -162,9 +164,10 @@ class CleanAction(StrEnumWithXml):
 `CleanAction.RESUME.value == "resume"` (the `"r"` alias is used only by the XML
 protocol path, not by JSON `Clean`/`CleanV2`).
 
-**The command class the GOAT uses** — `deebot_client/hardware/5xu9h3.py` (the
-hardware files moved out of the `deebot/` subfolder in 18.x), header *“DEEBOT
-GOAT G1 Capabilities”*:
+**The command class the GOATs use** — `deebot_client/hardware/5xu9h3.py` (GOAT G1)
+and `deebot_client/hardware/e4gqia.py` (GOAT A1600 LiDAR Pro). The hardware files
+moved out of the `deebot/` subfolder in 18.x. The two files are **byte-identical
+apart from their docstring**:
 
 ```python
 from deebot_client.commands.json.clean import CleanV2, GetCleanInfoV2
@@ -177,15 +180,29 @@ action=CapabilityCleanAction(command=CleanV2),
 `device.capabilities.clean.action.command` is still correct.
 
 So the resume command and the runtime capability path are byte-for-byte
-equivalent on 18.3.0; the integration reads the command class from the device's
-own capabilities and never hardcodes it, so the hardware-layout move is
+equivalent on 18.3.0 and 18.5.1; the integration reads the command class from the
+device's own capabilities and never hardcodes it, so the hardware-layout move is
 irrelevant to runtime behavior.
+
+**One real difference between the two versions:** 18.5.1 adds
+`area=CleanAreaV2` to `CapabilityCleanAction` for both `5xu9h3` and `e4gqia`, and
+adds `CleanMode.FREE_CLEAN`. `capabilities.map` remains `None` on both models in
+both versions. Nothing in the resume path touches either. See
+[the A1600 feasibility report](feasibility-a1600-resume.md#4-zone--map-observation).
+
+### The library's RESUME→START rewrite (do not rely on it)
+
+`Clean._execute` — inherited by `CleanV2` — rewrites a `RESUME` into a `START`
+whenever the last `StateEvent` is not `PAUSED`. A `START` restarts the map. The
+integration's own paused guard is what stops that from ever happening: it only
+dispatches after positively observing `PAUSED`, so the library sees the same state
+and never takes the rewrite branch. Treat the guard as load-bearing.
 
 ### Blocking I/O — version lookup runs off-loop
 
 `importlib.metadata.version("deebot-client")` does blocking filesystem I/O
 (`listdir`/`open`/`read_text` on `dist-info/METADATA`), which HA forbids on the
-event loop. Since neither 6.0.2 nor 18.3.0 exposes an in-memory
+event loop. Since neither 18.3.0 nor 18.5.1 exposes an in-memory
 `deebot_client.__version__`, the lookup is run **once** via
 `hass.async_add_executor_job(...)` and cached
 (`ecovacs_link.async_get_deebot_client_version`). The synchronous
@@ -200,7 +217,11 @@ diagnostic-only, so a failed lookup never blocks setup.
 - Keep all fragile, version-dependent access inside `ecovacs_link.py`.
 - Don’t hardcode the command class — read it from
   `device.capabilities.clean.action.command`.
-- Add or update a unit test for any behavioural change, and keep `ruff` clean.
+- Add or update a unit test for any behavioural change, and keep `ruff` and
+  `mypy` clean.
+- **Never** add a `start_mowing` fallback to the resume path. If a resume is not
+  possible the integration skips and logs; deciding on a fallback is the
+  automation layer's job.
 - Update [`CHANGELOG.md`](../CHANGELOG.md) and the version matrix above when you
   validate against new versions.
 - Localisation: keep `strings.json` and `translations/en.json` in sync, and update

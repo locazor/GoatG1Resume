@@ -1,5 +1,5 @@
 {
-  "name": "Goatee Continue (Ecovacs GOAT resume)",
+  "name": "Ecovacs Resume (continue mowing)",
   "content_in_root": false,
   "render_readme": true,
   "homeassistant": "2024.12.0",

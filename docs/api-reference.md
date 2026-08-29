@@ -1,10 +1,10 @@
 # API reference
 
 Authoritative reference generated from the code in
-`custom_components/goatee_continue/`. Signatures and schemas match the source
+`custom_components/ecovacs_resume/`. Signatures and schemas match the source
 exactly.
 
-- [Service: `goatee_continue.resume`](#service-goatee_continueresume)
+- [Service: `ecovacs_resume.resume`](#service-ecovacs_resumeresume)
 - [Button entity](#button-entity)
 - [Config flow](#config-flow)
 - [Constants (`const.py`)](#constants-constpy)
@@ -14,11 +14,11 @@ exactly.
 
 ---
 
-## Service: `goatee_continue.resume`
+## Service: `ecovacs_resume.resume`
 
-Defined in [`services.yaml`](../custom_components/goatee_continue/services.yaml);
+Defined in [`services.yaml`](../custom_components/ecovacs_resume/services.yaml);
 the runtime schema is `_RESUME_SCHEMA` in
-[`__init__.py`](../custom_components/goatee_continue/__init__.py).
+[`__init__.py`](../custom_components/ecovacs_resume/__init__.py).
 
 ```yaml
 resume:
@@ -42,11 +42,11 @@ _RESUME_SCHEMA = vol.Schema(
 | --- | --- | --- | --- |
 | `device_id` | no | `list[str]` | — |
 | `entity_id` | no | `list[str]` | — |
-| *(no target)* | — | — | Resume **all** configured GOATs |
+| *(no target)* | — | — | Resume **all** configured mowers |
 
 **Raises** (`HomeAssistantError`):
 
-- *“No Goatee Continue device matched this service call…”* — targets resolved to
+- *“No Ecovacs Resume device matched this service call…”* — targets resolved to
   zero configured devices.
 - Per-device failures from `async_send_resume` are collected and re-raised joined
   by `"; "`.
@@ -55,17 +55,17 @@ _RESUME_SCHEMA = vol.Schema(
 
 ## Button entity
 
-Class `GoateeContinueButton(ButtonEntity)` in
-[`button.py`](../custom_components/goatee_continue/button.py).
+Class `EcovacsResumeButton(ButtonEntity)` in
+[`button.py`](../custom_components/ecovacs_resume/button.py).
 
 | Attribute | Value |
 | --- | --- |
-| `entity_id` pattern | `button.<name>_continue` (e.g. `button.goatee_continue`) |
+| `entity_id` pattern | `button.<mower>_continue` (e.g. `button.a1600_continue`) |
 | `_attr_has_entity_name` | `True` |
 | `_attr_translation_key` | `"continue"` → friendly name **“Continue”** (`nb`: *“Fortsett”*) |
 | `_attr_icon` | `"mdi:play-pause"` |
 | `_attr_unique_id` | `f"{did}_continue"` |
-| `_attr_device_info` | `DeviceInfo(identifiers={("ecovacs", did)}, name=name)` — groups under the existing Ecovacs device |
+| `_attr_device_info` | `DeviceInfo(identifiers={("ecovacs", did)})` — **identifiers only**, so the entity attaches to the existing Ecovacs device instead of defining a second one |
 
 ```python
 async def async_press(self) -> None:
@@ -74,14 +74,14 @@ async def async_press(self) -> None:
 ```
 
 `async_setup_entry(hass, entry, async_add_entities)` adds exactly one button per
-config entry.
+config entry, i.e. one per mower.
 
 ---
 
 ## Config flow
 
-Class `GoateeContinueConfigFlow(ConfigFlow, domain="goatee_continue")` in
-[`config_flow.py`](../custom_components/goatee_continue/config_flow.py).
+Class `EcovacsResumeConfigFlow(ConfigFlow, domain="ecovacs_resume")` in
+[`config_flow.py`](../custom_components/ecovacs_resume/config_flow.py).
 `VERSION = 1`. Single user step:
 
 ```python
@@ -93,13 +93,19 @@ async def async_step_user(
 | Behaviour | Detail |
 | --- | --- |
 | Abort `ecovacs_not_loaded` | no `ecovacs` config entries exist |
-| Abort `no_devices` | `async_list_goat_devices` returned empty |
+| Abort `no_devices` | `async_list_resumable_devices` returned empty |
+| Abort `all_configured` | every resumable device already has a config entry |
 | Abort `already_configured` | `did` unique id already set up |
 | Created entry `title` | the friendly device name |
-| Created entry `data` | `{ "did": <did>, "device_name": <name> }` |
+| Created entry `data` | `{ "did": <did>, "device_name": <name>, "model_class": <class> }` |
 
 The single form field `did` is a `SelectSelector` (dropdown) whose options are
-`f"{name} ({did})"` for each resumable Ecovacs device.
+`f"{name} [{model_class}] ({did[:8]})"` for each resumable Ecovacs device that is
+**not already configured**. Run the flow again to add another mower.
+
+`name` is resolved as `nick` → `deviceName` → `name`: a mower with no nickname on
+the Ecovacs account reports the *account e-mail* as `name`, which would make every
+device on the account look identical in the dropdown.
 
 ---
 
@@ -107,10 +113,12 @@ The single form field `did` is a `SelectSelector` (dropdown) whose options are
 
 | Constant | Value |
 | --- | --- |
-| `DOMAIN` | `"goatee_continue"` |
+| `DOMAIN` | `"ecovacs_resume"` |
 | `ECOVACS_DOMAIN` | `"ecovacs"` |
 | `CONF_DID` | `"did"` |
+| `LEGACY_DOMAIN` | `"goatee_continue"` (pre-2.0 domain; detected to warn about a leftover install) |
 | `CONF_DEVICE_NAME` | `"device_name"` |
+| `CONF_MODEL_CLASS` | `"model_class"` |
 | `SERVICE_RESUME` | `"resume"` |
 | `ATTR_DEVICE_ID` | `"device_id"` |
 | `ATTR_ENTITY_ID` | `"entity_id"` |
@@ -139,20 +147,26 @@ resolved). Safe to call on the event loop; the cache is warmed by
 `async_get_deebot_client_version` during `async_setup_entry`.
 
 ```python
-def async_list_goat_devices(hass: HomeAssistant) -> dict[str, str]
+def async_list_resumable_devices(hass: HomeAssistant) -> dict[str, dict[str, str]]
 ```
-Returns `{did: friendly_name}` for every Ecovacs device that exposes a
-clean-action capability (i.e. can resume). Used by the config flow. Devices
-without `capabilities.clean.action.command` or without a `did` are excluded.
+Returns `{did: {"name": ..., "model_class": ...}}` for every Ecovacs device that
+exposes a clean-action capability (i.e. can resume). Used by the config flow.
+Devices without `capabilities.clean.action.command` or without a `did` are
+excluded.
 
 ```python
 async def async_send_resume(hass: HomeAssistant, did: str) -> None
 ```
 Resolves the live deebot `Device` for `did` and dispatches the resume command
 (`device.execute_command(CleanV2(CleanAction.RESUME))`, payload
-`{"act": "resume", "content": {}}` for the GOAT). Idempotent-safe: if the device
-is positively **not** paused it logs a warning and returns without dispatching.
+`{"act": "resume", "content": {}}` for the GOATs). Idempotent-safe: if the device
+is positively **not** paused — after one refresh-and-re-check — it logs a warning
+naming the offending state and the model class, then returns without dispatching.
 After a successful dispatch it requests a best-effort state refresh.
+
+It **never** falls back to `start_mowing`. Note that this guard is load-bearing:
+`deebot-client` rewrites `RESUME` → `START` when the device is not paused, which
+would restart the map.
 
 **Raises** `HomeAssistantError` when: the device id can’t be found; the device has
 no clean-action capability; `deebot-client`/`CleanAction.RESUME` is missing; or
@@ -165,14 +179,22 @@ Internal (private) helpers, for reference:
 | `_iter_ecovacs_devices(hass)` | `list[Any]` | enumerate authenticated deebot `Device`s via `runtime_data` (+ `hass.data` fallback) |
 | `_as_device_list(candidate)` | `list[Any]` | coerce a devices container to a list of real `Device`s |
 | `_device_did(device)` | `str \| None` | extract `did` from `device.device_info` |
-| `_device_name(device)` | `str \| None` | extract friendly name (`nick`/`name`) |
+| `_device_info_get(device, key)` | `Any` | read one key from `device_info`, dict or object shaped |
+| `_device_name(device)` | `str \| None` | friendly name: `nick` → `deviceName` → `name` |
 | `_find_device(hass, did)` | `Any \| None` | first device whose did matches |
 | `_resume_command_class(device)` | `type \| None` | `device.capabilities.clean.action.command` (`Clean`/`CleanV2`) |
 | `_resume_action()` | `Any` | `CleanAction.RESUME`, verifying the symbol exists |
-| `_device_is_resumable(device)` | `bool \| None` | `True`/`False` if paused; `None` if unknown |
+| `_device_state_name(device)` | `str \| None` | last deebot `State` member name (e.g. `"PAUSED"`), `None` if unknown |
+| `_device_model_class(device)` | `str \| None` | Ecovacs model class code (`"5xu9h3"`, `"e4gqia"`); diagnostic only |
+| `_request_state_refresh(device)` | `bool` | ask the device to re-report state; `True` if the ask landed |
+| `_async_resolve_state_name(device, name)` | `str \| None` | state name, re-checked once after a refresh if it looks stale |
 
-Module constants: `_RESUMABLE_STATE_NAMES = {"PAUSED"}` (the states that allow a
-dispatch). `_PAUSED_STATE_NAMES = {"PAUSED"}` is also defined.
+Module constants:
+
+| Constant | Value | Purpose |
+| --- | --- | --- |
+| `_RESUMABLE_STATE_NAMES` | `frozenset({"PAUSED"})` | deebot `State` member names that allow a dispatch |
+| `_STATE_RECHECK_DELAY_SECONDS` | `1.5` | how long to wait after `request_refresh` before re-reading a non-resumable state |
 
 ---
 
@@ -191,9 +213,9 @@ Unloads platforms and removes the domain service once the last entry is gone.
 
 | Function | Returns | Purpose |
 | --- | --- | --- |
-| `_async_register_service(hass)` | `None` | register `goatee_continue.resume` once |
+| `_async_register_service(hass)` | `None` | register `ecovacs_resume.resume` once |
 | `_configured_dids(hass)` | `set[str]` | dids configured via this integration |
-| `_resolve_target_dids(hass, call)` | `set[str]` | map a call’s `device_id`/`entity_id` targets to dids (no target → all configured) |
+| `_resolve_target_dids(hass, call)` | `set[str]` | map a call’s `device_id`/`entity_id` targets to dids (no target → all configured). Targets that resolve to Ecovacs devices which are **not** configured here are dropped, with a warning. |
 
 ---
 
@@ -201,18 +223,18 @@ Unloads platforms and removes the domain service once the last entry is gone.
 
 | Key | `manifest.json` |
 | --- | --- |
-| `domain` | `goatee_continue` |
-| `name` | `Goatee Continue (Ecovacs GOAT resume)` |
+| `domain` | `ecovacs_resume` |
+| `name` | `Ecovacs Resume (continue mowing)` |
 | `codeowners` | `["@locazor"]` |
 | `config_flow` | `true` |
 | `dependencies` | `["ecovacs"]` |
 | `iot_class` | `cloud_push` |
 | `requirements` | `[]` (deebot-client comes from the ecovacs integration) |
-| `version` | `1.0.0` |
+| `version` | `2.0.0` |
 
 | Key | `hacs.json` |
 | --- | --- |
-| `name` | `Goatee Continue (Ecovacs GOAT resume)` |
+| `name` | `Ecovacs Resume (continue mowing)` |
 | `content_in_root` | `false` |
 | `render_readme` | `true` |
 | `homeassistant` | `2024.12.0` |

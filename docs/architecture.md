@@ -1,6 +1,6 @@
 # Architecture
 
-Goatee Continue is deliberately small. Its design goal is to add a *resume*
+Ecovacs Resume is deliberately small. Its design goal is to add a *resume*
 surface to Home Assistant **without** opening a second Ecovacs cloud session, and
 to confine every fragile, version-dependent assumption to one module.
 
@@ -23,14 +23,14 @@ the official `ecovacs` integration created and dispatches the resume command on
 it. One account, one session, preserved.
 
 All of that cross-integration reach-in lives in a single module,
-[`ecovacs_link.py`](../custom_components/goatee_continue/ecovacs_link.py). The rest
+[`ecovacs_link.py`](../custom_components/ecovacs_resume/ecovacs_link.py). The rest
 of the integration (`__init__.py`, `button.py`, `config_flow.py`) only talks to
 that module’s small public surface:
 
 | Public helper | Used by |
 | --- | --- |
 | `async_send_resume(hass, did)` | the `resume` service and the button |
-| `async_list_goat_devices(hass)` | the config flow (device picker) |
+| `async_list_resumable_devices(hass)` | the config flow (device picker) |
 | `async_get_deebot_client_version(hass)` | logging / diagnostics (off-loop, cached) |
 | `deebot_client_version()` | logging / diagnostics (non-blocking cache read) |
 
@@ -42,8 +42,8 @@ that module’s small public surface:
 flowchart LR
     U["User / Automation / Dashboard"]
     subgraph HA["Home Assistant"]
-        subgraph GC["goatee_continue (this integration)"]
-            SVC["service: goatee_continue.resume"]
+        subgraph GC["ecovacs_resume (this integration)"]
+            SVC["service: ecovacs_resume.resume"]
             BTN["button.&lt;name&gt;_continue"]
             LINK["ecovacs_link.py<br/>(the only fragile module)"]
         end
@@ -53,7 +53,7 @@ flowchart LR
         end
     end
     CLOUD["Ecovacs Cloud (MQTT / REST)"]
-    MOWER["GOAT G1 mower<br/>(model 5xu9h3)"]
+    MOWER["Ecovacs mower<br/>(5xu9h3 / e4gqia)"]
 
     U --> SVC
     U --> BTN
@@ -74,7 +74,7 @@ The lookup is implemented in `_iter_ecovacs_devices` and `_find_device`. The
 primary path is the modern integration’s `runtime_data`:
 
 ```python
-# custom_components/goatee_continue/ecovacs_link.py (abridged)
+# custom_components/ecovacs_resume/ecovacs_link.py (abridged)
 for entry in hass.config_entries.async_entries(ECOVACS_DOMAIN):
     controller = getattr(entry, "runtime_data", None)        # EcovacsController
     candidate = getattr(controller, "devices", None)         # list or callable
@@ -110,15 +110,19 @@ call time rather than trusting them. Each failure raises a precise
 | --- | --- | --- |
 | Official `ecovacs` integration loaded | `async_setup_entry` (`__init__.py`) | *“The official Ecovacs integration is not configured…”* |
 | Device with the configured did exists | `async_send_resume` → `_find_device` | *“Could not find an Ecovacs device with id '…'…”* |
-| Device exposes a clean-action capability | `async_send_resume` → `_resume_command_class` | *“…does not expose a clean-action capability…”* |
+| Device exposes a clean-action capability | `async_send_resume` → `_resume_command_class` | *“…declares no clean-action capability…”* (names the device and model class) |
 | `deebot_client.models.CleanAction` importable | `_resume_action` | *“deebot-client is not installed…”* |
 | `CleanAction.RESUME` exists | `_resume_action` | *“This version of deebot-client has no CleanAction.RESUME…”* (logs the version) |
 | `execute_command` succeeds | `async_send_resume` | *“Failed to send resume command to '…': &lt;err&gt;”* |
 
 Two checks deliberately **do not** raise — they degrade gracefully:
 
-- `_device_is_resumable` returns `None` when the state is unknown (no `StateEvent`
-  yet); the caller then proceeds and lets the device/library decide.
+- `_device_state_name` returns `None` when the state is unknown (no `StateEvent`
+  yet); the caller then proceeds. This is safe: with no state, `deebot-client`
+  leaves `act: resume` untouched.
+- A non-resumable state does not raise either — it is re-checked once after a
+  `request_refresh`, and then skipped with a warning naming the state. A skip is
+  a no-op, never a fallback to `start_mowing`.
 - The post-dispatch `events.request_refresh(StateEvent)` is best-effort and never
   fatal (purely cosmetic state freshening).
 
@@ -134,9 +138,9 @@ sequenceDiagram
     participant L as ecovacs_link
     participant D as deebot Device
     participant C as Ecovacs Cloud
-    participant M as GOAT G1
+    participant M as Ecovacs mower
 
-    U->>S: call goatee_continue.resume (or press button)
+    U->>S: call ecovacs_resume.resume (or press button)
     S->>I: _resolve_target_dids() -> did(s)
     I->>L: async_send_resume(hass, did)
     L->>L: _find_device(did)
@@ -182,8 +186,8 @@ Mitigations baked into the design:
 
 | Component | Version |
 | --- | --- |
-| Home Assistant core | ~2026 stable (`ecovacs` using `ConfigEntry.runtime_data` → `EcovacsController.devices`) |
-| `deebot-client` | **6.0.2** |
+| Home Assistant core | **2026.8.3** / HAOS 18.2 / Python 3.14.6 (`ecovacs` using `ConfigEntry.runtime_data` → `EcovacsController.devices`) |
+| `deebot-client` | **18.3.0** and **18.5.1** |
 | Minimum HA (manifest / `hacs.json`) | `2024.12.0` |
 
 After any upgrade, re-run the recon in

@@ -1,4 +1,5 @@
 pytest
 pytest-asyncio
-deebot-client>=6.0.2
+deebot-client>=18.3.0
 ruff
+mypy

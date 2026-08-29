@@ -10,16 +10,16 @@ first — it prints the exact dispatched payload and the validated versions.
 logger:
   default: warning
   logs:
-    custom_components.goatee_continue: debug
+    custom_components.ecovacs_resume: debug
 ```
 
-The logger names are `custom_components.goatee_continue` (service registration,
-button presses) and `custom_components.goatee_continue.ecovacs_link` (device
+The logger names are `custom_components.ecovacs_resume` (service registration,
+button presses) and `custom_components.ecovacs_resume.ecovacs_link` (device
 resolution, the resume dispatch). At `debug` you’ll see, for each resume:
 
 ```
 Sending resume/continue (act: resume) to Ecovacs device '<name>'
-Resume command: CleanV2 name=clean_V2 args={'act': 'resume', 'content': {}} (deebot-client 6.0.2)
+Resume command: CleanV2 name=clean_V2 args={'act': 'resume', 'content': {}} model_class=e4gqia (deebot-client 18.5.1)
 ```
 
 ---
@@ -30,18 +30,18 @@ Resume command: CleanV2 name=clean_V2 args={'act': 'resume', 'content': {}} (dee
 
 - **Raised by:** `async_setup_entry` (`__init__.py`), and the config flow aborts
   with `ecovacs_not_loaded`.
-- **Cause:** Goatee Continue reuses the official `ecovacs` session, and no
+- **Cause:** Ecovacs Resume reuses the official `ecovacs` session, and no
   `ecovacs` config entry exists.
 - **Fix:** Set up **Settings → Devices & Services → Add Integration → Ecovacs**
-  first, then add/reload Goatee Continue.
+  first, then add/reload Ecovacs Resume.
 
 ### “No compatible Ecovacs devices were found” (config flow abort `no_devices`)
 
-- **Raised by:** `async_step_user` when `async_list_goat_devices` is empty.
+- **Raised by:** `async_step_user` when `async_list_resumable_devices` is empty.
 - **Cause:** the Ecovacs integration is loaded but no device exposes a clean-action
-  capability (`capabilities.clean.action.command`) — usually because the GOAT is
+  capability (`capabilities.clean.action.command`) — usually because the mower is
   offline or Ecovacs hasn’t finished loading its devices yet.
-- **Fix:** Confirm the GOAT is online (visible as a `lawn_mower` entity), wait for
+- **Fix:** Confirm the mower is online (visible as a `lawn_mower` entity), wait for
   Ecovacs to finish loading, then retry the flow.
 
 ### “Could not find an Ecovacs device with id '…'”
@@ -64,7 +64,7 @@ Resume command: CleanV2 name=clean_V2 args={'act': 'resume', 'content': {}} (dee
   1. **Nothing to continue** — the mower is genuinely idle/docked with no preserved
      task. This is correct behaviour; use `lawn_mower.start_mowing` to begin a new
      task.
-  2. **Docked/paused flapping (known limitation)** — on the GOAT, a preserved task
+  2. **Docked/paused flapping (known limitation)** — on the GOAT G1, a preserved task
      can report `docked` and `paused` alternately while on the dock. A call that
      lands on a `docked` sample is skipped even though “Continue” is available in
      the app. **Fix/workaround:** retry, or trigger the automation on the `paused`
@@ -101,12 +101,12 @@ Resume command: CleanV2 name=clean_V2 args={'act': 'resume', 'content': {}} (dee
 
 ### Breakage right after a Home Assistant update (Option A fragility)
 
-- **Cause:** Goatee Continue reaches into the `ecovacs` integration’s
+- **Cause:** Ecovacs Resume reaches into the `ecovacs` integration’s
   `runtime_data` / `EcovacsController.devices` and the `deebot-client` `Device`
   shape — none of which are stable public APIs. A core/`ecovacs`/`deebot-client`
   upgrade can change them.
 - **Fix:** The fragile access is all in
-  [`ecovacs_link.py`](../custom_components/goatee_continue/ecovacs_link.py). Enable
+  [`ecovacs_link.py`](../custom_components/ecovacs_resume/ecovacs_link.py). Enable
   debug logging, find which assumption broke (device lookup vs. capability vs.
   `CleanAction`), and patch that one module. See
   [architecture → fragility caveat](architecture.md#fragility-caveat) and the
@@ -115,9 +115,9 @@ Resume command: CleanV2 name=clean_V2 args={'act': 'resume', 'content': {}} (dee
 ### A note on Ecovacs passwords with `-` or `?`
 
 Ecovacs has a known auth-encoding bug for passwords containing certain characters.
-Goatee Continue **never logs in** (Option A), so it is unaffected — this note is
+Ecovacs Resume **never logs in** (Option A), so it is unaffected — this note is
 here only because that bug can break the **official** integration’s setup, which
-Goatee Continue depends on.
+Ecovacs Resume depends on.
 
 ---
 

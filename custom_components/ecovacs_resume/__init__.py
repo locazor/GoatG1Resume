@@ -1,10 +1,14 @@
-"""The Goatee Continue (Ecovacs GOAT resume) integration.
+"""The Ecovacs Resume integration.
 
 Adds the "continue / resume mowing" capability that the built-in Home
 Assistant ``lawn_mower`` platform lacks for Ecovacs robots (see core issue
 home-assistant/core#145338). It reuses the authenticated ``deebot-client``
 session owned by the official ``ecovacs`` integration (no second login) and
 dispatches the native resume command (``act: resume``).
+
+One config entry per mower. Add the integration once per device you want a
+Continue button for; the ``ecovacs_resume.resume`` service accepts a normal
+Home Assistant target and resolves it to the right device.
 """
 
 from __future__ import annotations
@@ -16,15 +20,20 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import config_validation as cv, device_registry as dr
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import (
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+)
 
 from .const import (
     ATTR_DEVICE_ID,
     ATTR_ENTITY_ID,
     CONF_DID,
+    CONF_MODEL_CLASS,
     DOMAIN,
     ECOVACS_DOMAIN,
+    LEGACY_DOMAIN,
     PLATFORMS,
     SERVICE_RESUME,
 )
@@ -32,7 +41,7 @@ from .ecovacs_link import async_get_deebot_client_version, async_send_resume
 
 _LOGGER = logging.getLogger(__name__)
 
-# Service schema: with no target we resume every configured GOAT; otherwise the
+# Service schema: with no target we resume every configured mower; otherwise the
 # caller may scope the call to specific HA device_id(s) or entity_id(s).
 _RESUME_SCHEMA = vol.Schema(
     {
@@ -43,13 +52,24 @@ _RESUME_SCHEMA = vol.Schema(
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Goatee Continue from a config entry."""
+    """Set up Ecovacs Resume from a config entry."""
     # Defensive ordering check: the official ecovacs integration must be loaded
     # because we reuse its authenticated session.
     if not hass.config_entries.async_entries(ECOVACS_DOMAIN):
         raise HomeAssistantError(
-            "The official Ecovacs integration is not configured. Goatee Continue "
+            "The official Ecovacs integration is not configured. Ecovacs Resume "
             "reuses its authenticated session and cannot work without it."
+        )
+
+    if hass.config_entries.async_entries(LEGACY_DOMAIN):
+        _LOGGER.warning(
+            "The old '%s' integration is still installed alongside '%s'. Both will "
+            "try to create a Continue button for the same mower. Remove the old one "
+            "(Settings > Devices & services) and delete "
+            "custom_components/%s. See docs/migration-2.0.md",
+            LEGACY_DOMAIN,
+            DOMAIN,
+            LEGACY_DOMAIN,
         )
 
     # Resolve the deebot-client version off the event loop (cached thereafter).
@@ -57,8 +77,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # forbids on the loop; the version is diagnostic only so failures are
     # non-fatal and fall back to "unknown".
     _LOGGER.debug(
-        "Setting up Goatee Continue for did=%s (deebot-client %s)",
+        "Setting up Ecovacs Resume for did=%s model_class=%s (deebot-client %s)",
         entry.data.get(CONF_DID),
+        entry.data.get(CONF_MODEL_CLASS) or "unknown",
         await async_get_deebot_client_version(hass),
     )
 
@@ -86,7 +107,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 def _async_register_service(hass: HomeAssistant) -> None:
-    """Register the ``goatee_continue.resume`` service (once)."""
+    """Register the ``ecovacs_resume.resume`` service (once)."""
     if hass.services.has_service(DOMAIN, SERVICE_RESUME):
         return
 
@@ -94,11 +115,11 @@ def _async_register_service(hass: HomeAssistant) -> None:
         dids = _resolve_target_dids(hass, call)
         if not dids:
             raise HomeAssistantError(
-                "No Goatee Continue device matched this service call. Configure "
+                "No Ecovacs Resume device matched this service call. Configure "
                 "the integration or target a configured Ecovacs device."
             )
         errors: list[str] = []
-        for did in dids:
+        for did in sorted(dids):
             try:
                 await async_send_resume(hass, did)
             except HomeAssistantError as err:
@@ -124,7 +145,7 @@ def _configured_dids(hass: HomeAssistant) -> set[str]:
 def _resolve_target_dids(hass: HomeAssistant, call: ServiceCall) -> set[str]:
     """Map a service call's targets to deebot device ids ("did").
 
-    * No target -> all configured GOAT dids (the common case / the button).
+    * No target -> every configured mower (the common case / the button).
     * ``device_id`` / ``entity_id`` -> resolve to the ecovacs device's did via
       the device & entity registries, then intersect with what's configured
       so we never act on an unrelated ecovacs device by accident.
@@ -140,7 +161,8 @@ def _resolve_target_dids(hass: HomeAssistant, call: ServiceCall) -> set[str]:
     dev_reg = dr.async_get(hass)
     ent_reg = er.async_get(hass)
 
-    # Translate entity_ids into their backing HA device_ids.
+    # Translate entity_ids into their backing HA device_ids. This is what makes
+    # targeting `lawn_mower.a1600` (or our own button entity) work.
     resolved_device_ids: set[str] = set(device_ids)
     for entity_id in entity_ids:
         entity = ent_reg.async_get(entity_id)
@@ -159,4 +181,10 @@ def _resolve_target_dids(hass: HomeAssistant, call: ServiceCall) -> set[str]:
 
     # Only act on devices this integration is actually configured for.
     scoped = {did for did in dids if did in configured}
-    return scoped or dids
+    if dids and not scoped:
+        _LOGGER.warning(
+            "Service call targeted Ecovacs device(s) %s, which are not configured "
+            "in Ecovacs Resume. Add a config entry for them first.",
+            ", ".join(sorted(dids)),
+        )
+    return scoped
