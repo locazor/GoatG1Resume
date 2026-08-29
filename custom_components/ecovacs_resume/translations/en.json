@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Goatee Continue",
-        "description": "Select the Ecovacs GOAT mower to add a resume/continue capability for. This reuses the official Ecovacs integration's session — no second login.",
+        "title": "Ecovacs Resume",
+        "description": "Select the Ecovacs mower to add a resume/continue capability for. Add the integration again to set up another mower. This reuses the official Ecovacs integration's session — no second login.",
         "data": {
           "did": "Ecovacs device"
         }
@@ -11,8 +11,9 @@
     },
     "abort": {
       "already_configured": "This device is already configured.",
-      "ecovacs_not_loaded": "The official Ecovacs integration is not set up. Add it first, then add Goatee Continue.",
-      "no_devices": "No compatible Ecovacs devices were found. Make sure the official Ecovacs integration is loaded and your GOAT is online."
+      "all_configured": "Every compatible Ecovacs device is already configured.",
+      "ecovacs_not_loaded": "The official Ecovacs integration is not set up. Add it first, then add Ecovacs Resume.",
+      "no_devices": "No compatible Ecovacs devices were found. Make sure the official Ecovacs integration is loaded and your mower is online."
     }
   },
   "entity": {
@@ -29,7 +30,7 @@
       "fields": {
         "device_id": {
           "name": "Device",
-          "description": "Ecovacs device(s) to resume. Defaults to all configured GOATs."
+          "description": "Ecovacs device(s) to resume. Defaults to all configured mowers."
         },
         "entity_id": {
           "name": "Entity",

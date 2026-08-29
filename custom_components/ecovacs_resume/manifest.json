@@ -1,6 +1,6 @@
 {
-  "domain": "goatee_continue",
-  "name": "Goatee Continue (Ecovacs GOAT resume)",
+  "domain": "ecovacs_resume",
+  "name": "Ecovacs Resume (continue mowing)",
   "codeowners": ["@locazor"],
   "config_flow": true,
   "dependencies": ["ecovacs"],
@@ -8,5 +8,5 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/locazor/goatg1resume/issues",
   "requirements": [],
-  "version": "1.0.1"
+  "version": "2.0.0"
 }

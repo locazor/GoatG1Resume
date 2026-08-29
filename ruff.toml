@@ -1,0 +1,38 @@
+# Lint configuration for this custom component.
+#
+# Deliberately mirrors Home Assistant core's conventions so that code written
+# here reads like code in HA itself: `homeassistant` is treated as first party,
+# `from x import a as b, c as d` is allowed, and stdlib `from` imports sort
+# alongside plain `import` statements.
+
+target-version = "py313"
+line-length = 88
+
+[lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "N",    # pep8-naming
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "BLE",  # flake8-blind-except
+  "SIM",  # flake8-simplify
+  "D",    # pydocstyle
+  "RUF",  # ruff-specific
+]
+
+[lint.pydocstyle]
+convention = "pep257"
+
+[lint.isort]
+force-sort-within-sections = true
+known-first-party = ["homeassistant"]
+combine-as-imports = true
+split-on-trailing-comma = false
+
+[lint.per-file-ignores]
+# Tests use fixtures and module-level loading helpers that do not need the full
+# docstring/naming ceremony.
+"tests/*" = ["D103", "N816"]

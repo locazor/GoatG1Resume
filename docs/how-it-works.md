@@ -1,21 +1,22 @@
 # How it works
 
 This page explains the technical background, sourced from the code in this repo
-and from the installed `deebot-client` **6.0.2**. Where this differs from earlier
-notes, the code wins and the difference is called out.
+and from the installed `deebot-client` (**18.3.0** and **18.5.1**; HA 2026.8.3
+ships 18.5.1). Where this differs from earlier notes, the code wins and the
+difference is called out.
 
 - [The Home Assistant limitation (#145338)](#the-home-assistant-limitation-145338)
 - [The Ecovacs clean-action codes and `act: resume`](#the-ecovacs-clean-action-codes-and-act-resume)
-- [Model `5xu9h3`, `CleanV2`, and the runtime capability lookup](#model-5xu9h3-cleanv2-and-the-runtime-capability-lookup)
+- [Model classes, `CleanV2`, and the runtime capability lookup](#model-classes-cleanv2-and-the-runtime-capability-lookup)
 - [End-to-end: from service/button to the mower](#end-to-end-from-servicebutton-to-the-mower)
 
 ---
 
 ## The Home Assistant limitation (#145338)
 
-The built-in `ecovacs` integration maps the GOAT onto Home Assistant’s
+The built-in `ecovacs` integration maps the mower onto Home Assistant’s
 `lawn_mower` platform, which only offers `start_mowing`, `pause`, and `dock`.
-There is **no “resume”**. On the GOAT G1, once a task is paused (the app shows
+There is **no “resume”**. Once a task is paused (the app shows
 *“Task paused / Continue”* with a mowing-%), calling `lawn_mower.start_mowing`
 **starts a brand-new task** — progress resets to ~1% and the previously-planned
 coverage is lost.
@@ -26,24 +27,27 @@ This is the open core limitation tracked in
 `send_command: resume` has no effect through the built-in surface).
 
 The resume capability exists in the protocol/library — it is simply not exposed
-by the built-in integration. Goatee Continue surfaces it.
+by the built-in integration. Ecovacs Resume surfaces it.
 
 ---
 
 ## The Ecovacs clean-action codes and `act: resume`
 
 The mower’s “clean” command carries an **action** named `act`. In
-`deebot-client` 6.0.2 the actions are modelled by the `CleanAction` string enum
+`deebot-client` 18.x the actions are modelled by the `CleanAction` string enum
 (`deebot_client/models.py`):
 
 ```python
 @unique
-class CleanAction(StrEnum):
-    START = "start"
-    PAUSE = "pause"
-    RESUME = "resume"   # <-- the app's "Continue"
-    STOP = "stop"
+class CleanAction(StrEnumWithXml):
+    START = "start", "s"
+    PAUSE = "pause", "p"
+    RESUME = "resume", "r"   # <-- the app's "Continue"
+    STOP = "stop", "h"
 ```
+
+The first element is the enum `.value` (the JSON wire value); the second is
+`.xml_value`, used only by legacy XML-protocol devices.
 
 So the on-the-wire value for resume is the **full word** `act: resume` — verified
 at runtime:
@@ -55,10 +59,10 @@ at runtime:
 ```
 
 > **Note: differs from earlier notes.** Some older notes (and earlier drafts of
-> the docstrings) described the action as the single letter **`act: r`**, and a
-> legacy `s` / `r` / `p` / `h` table circulated for the *historical* Ecovacs XML
-> protocol. That does **not** match `deebot-client` 6.0.2’s JSON commands, whose
-> `CleanAction` values are full words. The authoritative value this integration
+> the docstrings) described the action as the single letter **`act: r`**, from the
+> legacy `s` / `r` / `p` / `h` table for the *historical* Ecovacs XML protocol.
+> Those letters are real, but they are the `.xml_value`s — they do **not** apply to
+> JSON devices like the GOATs, whose `CleanAction` `.value`s are full words. The authoritative value this integration
 > sends is **`act: resume`**, proven by `tests/test_resume.py`
 > (`assert sent._args["act"] == "resume"`). The docstrings in this repo were
 > corrected to say `act: resume`.
@@ -74,62 +78,83 @@ elif self._args["act"] == CleanAction.START.value and state.state == State.PAUSE
     self._args = self._get_args(CleanAction.RESUME)
 ```
 
-— i.e. a `RESUME` is honoured precisely when there is a paused task to continue,
-and degrades to `START` otherwise. `CleanV2` inherits this `_execute` guard.
-Goatee Continue adds its **own** earlier guard on top (see
-[the state-guard flowchart](usage.md#the-idempotent-safe-guard)) so it can skip
-with a clear log line instead of relying solely on the library.
+`CleanV2` inherits this `_execute`. Read the first branch carefully: if the last
+reported state is **not** `PAUSED`, the library **silently rewrites our resume into
+a `START`** — which begins a new task and restarts the map. That is precisely the
+behaviour this integration exists to prevent, so it must never be relied on as a
+safety net; it *is* the hazard.
+
+Ecovacs Resume therefore applies its **own guard first** (see
+[the state-guard flowchart](usage.md#the-idempotent-safe-guard)) and only
+dispatches once it has positively observed `PAUSED`. The library then sees the
+same `PAUSED` state and its rewrite branch is never taken. When no state has been
+reported at all, the library's `if state` is falsy and the raw `act: resume` goes
+out untouched — also safe. **Do not weaken this guard** on the theory that the
+library will do the right thing.
 
 ---
 
-## Model `5xu9h3`, `CleanV2`, and the runtime capability lookup
+## Model classes, `CleanV2`, and the runtime capability lookup
 
-Each Ecovacs model ships a hardware capability file. The **GOAT G1** is model
-**`5xu9h3`** — `deebot_client/hardware/deebot/5xu9h3.py`, header
-*“DEEBOT GOAT G1 Capabilities”* — and it wires its clean action to **`CleanV2`**
+Each Ecovacs model ships a hardware capability file, selected by the model
+`class` code the cloud reports for the device. In `deebot-client` 18.x these live
+at `deebot_client/hardware/<class>.py` (older releases used
+`deebot_client/hardware/deebot/<class>.py`).
+
+Both GOAT mowers validated here wire their clean action to **`CleanV2`**
 (not `Clean`):
 
 ```python
-# deebot_client/hardware/deebot/5xu9h3.py (abridged)
-"""DEEBOT GOAT G1 Capabilities."""
+# deebot_client/hardware/5xu9h3.py  — "DEEBOT GOAT G1 Capabilities."
+# deebot_client/hardware/e4gqia.py  — "GOAT A3000 LiDAR Pro."  (the A1600 class)
 from deebot_client.commands.json.clean import CleanV2, GetCleanInfoV2
 ...
 action=CapabilityCleanAction(command=CleanV2),
 ```
 
+The two files are **byte-identical apart from that docstring**, in both 18.3.0
+and 18.5.1 — which is why the GOAT A1600 LiDAR Pro needed no new code. (The
+upstream docstring says *A3000*; `e4gqia` is nevertheless the class a live A1600
+reports. It is cosmetic.)
+
 The two command classes serialize differently:
 
-| Command class | `CleanAction.RESUME` payload (`._args`) | `name` |
+| Command class | `CleanAction.RESUME` payload (`._args`) | `NAME` |
 | --- | --- | --- |
 | `Clean` (older models, e.g. T10 PLUS `umwv6z`) | `{"act": "resume"}` | `clean` |
-| `CleanV2` (GOAT G1 `5xu9h3`) | `{"act": "resume", "content": {}}` | `clean_V2` |
+| `CleanV2` (GOAT G1 `5xu9h3`, GOAT A1600 `e4gqia`) | `{"act": "resume", "content": {}}` | `clean_V2` |
 
-> **Note: differs from earlier notes.** An earlier brief guessed the GOAT’s model
-> code as `umwv6z`. In `deebot-client` 6.0.2 that file is actually the **T10 PLUS**
-> (which uses `Clean`). The GOAT G1 is model **`5xu9h3`** and uses **`CleanV2`**.
+`CleanAction.RESUME` is a `StrEnumWithXml` member — `RESUME = "resume", "r"`. The
+`.value` (`"resume"`) is what JSON-protocol devices receive; the `"r"` is only the
+alias for legacy XML-protocol devices. Both GOATs are JSON devices, so the wire
+value is `resume`.
 
 Rather than hardcode `CleanV2`, the integration reads the command class straight
-from the device’s declared capabilities, so the correct class is used per model:
+from the device's declared capabilities, so the correct class is used per model:
 
 ```python
-# custom_components/goatee_continue/ecovacs_link.py
+# custom_components/ecovacs_resume/ecovacs_link.py
 def _resume_command_class(device: Any) -> type | None:
     """Return the clean-action command class for this device (Clean/CleanV2)."""
     try:
-        return device.capabilities.clean.action.command
+        command = device.capabilities.clean.action.command
     except AttributeError:
         return None
+    return command if command is not None else None
 ```
 
-This is also the filter the config flow uses: a device is only offered as a
-“GOAT” if it exposes `capabilities.clean.action.command` (true for vacuums and
+If a device declares no clean action at all, `async_send_resume` raises a
+`HomeAssistantError` naming the device and its model class rather than guessing.
+
+This is also the filter the config flow uses: a device is only offered in the
+picker if it exposes `capabilities.clean.action.command` (true for vacuums and
 mowers, false for sensor-only devices).
 
 ---
 
 ## End-to-end: from service/button to the mower
 
-1. A user, automation, or dashboard calls **`goatee_continue.resume`** (or presses
+1. A user, automation, or dashboard calls **`ecovacs_resume.resume`** (or presses
    **`button.<name>_continue`**).
 2. `__init__.py` resolves the call’s target(s) to one or more deebot device ids
    (“did”) via `_resolve_target_dids`, then calls

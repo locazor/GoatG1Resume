@@ -4,18 +4,23 @@ resume:
     Continue the paused, unfinished mowing task from where it left off
     (mirrors the Ecovacs app's "Continue" button by sending act: resume).
     Unlike lawn_mower.start_mowing, this does NOT restart the map from scratch.
-    With no target, every configured GOAT is resumed.
+    Skipped with a warning if the mower has no paused task. With no target,
+    every configured mower is resumed.
   fields:
     device_id:
       name: Device
-      description: Ecovacs device(s) to resume. Defaults to all configured GOATs.
+      description: >-
+        Ecovacs device(s) to resume. Must be configured in Ecovacs Resume.
+        Defaults to all configured mowers.
       required: false
       selector:
         device:
           integration: ecovacs
     entity_id:
       name: Entity
-      description: Lawn mower entity(ies) whose device should be resumed.
+      description: >-
+        Lawn mower entity(ies) whose device should be resumed. Resolved to the
+        backing Ecovacs device.
       required: false
       selector:
         entity:
